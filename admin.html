@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAJ CYBER CAFE — Admin</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#182230;background:#f4f6f9}
+body{margin:0}.wrap{max-width:1100px;margin:auto;padding:22px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-size:23px;margin:0} .muted{color:#667085;font-size:13px}
+.panel{background:white;border:1px solid #e4e7ec;border-radius:14px;padding:16px;margin:16px 0;box-shadow:0 2px 8px #1018280a}
+input,button{font:inherit;border-radius:9px;padding:10px 12px;border:1px solid #d0d5dd}
+input{min-width:220px}button{background:#1459c7;color:white;border:0;cursor:pointer}
+button.secondary{background:#eef2f7;color:#182230}button.danger{background:#b42318}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:#f8fafc;border-radius:10px;padding:12px}.stat strong{display:block;font-size:22px;margin-top:5px}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:780px}
+th,td{text-align:left;padding:11px 9px;border-bottom:1px solid #eaecf0;font-size:14px}
+th{color:#475467;background:#f9fafb}.pill{padding:4px 8px;border-radius:99px;background:#eef2f7;font-size:12px}
+.ok{background:#dcfae6;color:#067647}.wait{background:#fef0c7;color:#93370d}
+#error{color:#b42318;white-space:pre-wrap}.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><div><h1>RAJ CYBER CAFE</h1><div class="muted">WhatsApp Photo Order — Admin Dashboard</div></div>
+<button class="secondary" onclick="loadOrders()">Refresh Orders</button></header>
+
+<section class="panel" id="login">
+<h3>Admin Login</h3>
+<p class="muted">Hosting-এর Environment Variables-এ সেট করা ADMIN_TOKEN দিন।</p>
+<input id="token" type="password" placeholder="Admin Token" autocomplete="off">
+<div class="actions"><button onclick="saveToken()">Login</button></div>
+<p id="error"></p>
+</section>
+
+<section id="dashboard" class="hidden">
+<div class="panel stats">
+<div class="stat">মোট অর্ডার<strong id="total">0</strong></div>
+<div class="stat">Payment Review<strong id="review">0</strong></div>
+<div class="stat">Cash Pending<strong id="cash">0</strong></div>
+<div class="stat">Delivered<strong id="delivered">0</strong></div>
+</div>
+<div class="panel">
+<h3>অর্ডার তালিকা</h3>
+<p class="muted">UTR-সহ online payment আপনার bank/UPI statement-এ যাচাই করে তবেই Approve করবেন।</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Order</th><th>WhatsApp</th><th>Copies</th><th>Amount</th><th>Payment</th><th>UTR</th><th>Status</th><th>Action</th></tr></thead>
+<tbody id="orders"><tr><td colspan="8">Loading...</td></tr></tbody>
+</table></div>
+<p id="error2"></p>
+</div>
+</section>
+</div>
+<script>
+const tokenKey = "rajCafeAdminToken";
+function authHeaders(){return {"X-Admin-Token":sessionStorage.getItem(tokenKey)||""};}
+function showError(msg){document.getElementById("error").textContent=msg;document.getElementById("error2").textContent=msg;}
+function saveToken(){
+ const t=document.getElementById("token").value.trim();
+ if(!t){showError("Admin Token দিন।");return;}
+ sessionStorage.setItem(tokenKey,t);loadOrders();
+}
+async function loadOrders(){
+ const t=sessionStorage.getItem(tokenKey);
+ if(!t){document.getElementById("login").classList.remove("hidden");return;}
+ try{
+  const r=await fetch("/admin/orders",{headers:authHeaders()});
+  if(!r.ok)throw new Error(r.status===401?"Admin Token ভুল বা সেট করা নেই।":"Orders load হয়নি: "+r.status);
+  const data=await r.json(), rows=data.orders||[];
+  document.getElementById("login").classList.add("hidden");
+  document.getElementById("dashboard").classList.remove("hidden");
+  document.getElementById("total").textContent=rows.length;
+  document.getElementById("review").textContent=rows.filter(x=>x.status==="payment_review").length;
+  document.getElementById("cash").textContent=rows.filter(x=>x.status==="cash_pending").length;
+  document.getElementById("delivered").textContent=rows.filter(x=>x.status==="delivered").length;
+  const body=document.getElementById("orders");
+  body.innerHTML="";
+  if(!rows.length){body.innerHTML='<tr><td colspan="8">এখনও কোনো অর্ডার নেই।</td></tr>';return;}
+  rows.forEach(o=>{
+   const tr=document.createElement("tr");
+   const vals=[o.order_id,o.phone,o.quantity??"-",o.price==null?"-":"₹"+o.price,o.payment_method||"-",o.utr||"-",o.status];
+   vals.forEach((v,i)=>{const td=document.createElement("td");td.textContent=v;if(i===6){const s=document.createElement("span");s.className="pill "+(o.status==="delivered"?"ok":o.status==="payment_review"?"wait":"");s.textContent=v;td.textContent="";td.appendChild(s);}tr.appendChild(td);});
+   const action=document.createElement("td");
+   if(o.status==="payment_review"){
+    const b=document.createElement("button");b.textContent="Verify & Send Photo";b.onclick=()=>approve(o.order_id);action.appendChild(b);
+   }else{action.textContent="—";}
+   tr.appendChild(action);body.appendChild(tr);
+  });
+ }catch(e){showError(e.message);document.getElementById("login").classList.remove("hidden");}
+}
+async function approve(id){
+ if(!confirm(id+" — bank/UPI statement-এ payment সত্যি এসেছে যাচাই করেছেন?"))return;
+ try{
+  const r=await fetch("/admin/approve/"+encodeURIComponent(id),{method:"POST",headers:authHeaders()});
+  const data=await r.json();if(!r.ok)throw new Error(data.error||"Approve failed");
+  alert("Photo download link WhatsApp-এ পাঠানো হয়েছে।");loadOrders();
+ }catch(e){showError(e.message);}
+}
+if(sessionStorage.getItem(tokenKey))loadOrders();
+</script>
+</body></html>
