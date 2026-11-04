@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: raj-cyber-cafe-whatsapp-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-prod.txt
+    startCommand: gunicorn app:app
+    healthCheckPath: /health
+    envVars:
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        value: whatsapp:+14155238886
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: UPI_ID
+        value: mdnaim07@fam
+      - key: SHOP_NAME
+        value: RAJ CYBER CAFE
+      - key: SHOP_ADDRESS
+        value: Harishchandrapur
+      - key: SHOP_WHATSAPP
+        value: "8515035840"
+      - key: VALIDATE_TWILIO_SIGNATURE
+        value: "true"
